@@ -1,0 +1,62 @@
+const { Contract } = require('fabric-contract-api');
+
+class MyContract extends Contract {
+
+    async storeData(ctx, key, value) {
+        await ctx.stub.putState(key, Buffer.from(JSON.stringify(value)));
+    }
+
+    async retrieveData(ctx, key) {
+        const dataBuffer = await ctx.stub.getState(key);
+        if (!dataBuffer || dataBuffer.length === 0) {
+            throw new Error(`Data with key ${key} does not exist`);
+        }
+        return JSON.parse(dataBuffer.toString());
+    }
+
+    async updateData(ctx, key, newValue) {
+        const exists = await this.dataExists(ctx, key);
+        if (!exists) {
+            throw new Error(`Cannot update data. Data with key ${key} does not exist`);
+        }
+        await ctx.stub.putState(key, Buffer.from(JSON.stringify(newValue)));
+    }
+
+    async getHistory(ctx, key) {
+        const historyIterator = await ctx.stub.getHistoryForKey(key);
+        const history = [];
+        while (true) {
+            const historyRecord = await historyIterator.next();
+            if (historyRecord.value && historyRecord.value.value.toString()) {
+                const txData = JSON.parse(historyRecord.value.value.toString('utf8'));
+                history.push(txData);
+            }
+            if (historyRecord.done) {
+                await historyIterator.close();
+                return history;
+            }
+        }
+    }
+
+    async getHistoryByNonPrimaryKey(ctx, query) {
+        const iterator = await ctx.stub.getQueryResult(query);
+        const results = [];
+        while (true) {
+            const result = await iterator.next();
+            if (result.value && result.value.value.toString()) {
+                const data = JSON.parse(result.value.value.toString('utf8'));
+                results.push(data);
+            }
+            if (result.done) {
+                await iterator.close();
+                return results;
+            }
+        }
+    }
+
+    async dataExists(ctx, key) {
+        const dataBuffer = await ctx.stub.getState(key);
+        return dataBuffer && dataBuffer.length > 0;
+    }
+}
+
